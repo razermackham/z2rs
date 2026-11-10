@@ -1,0 +1,125 @@
+name: flatpak
+
+# Builds the Flatpak bundle and attaches it to the GitHub release on tag
+# builds. Manual runs leave the bundles as workflow artifacts, which is the
+# way to test the manifest before tagging.
+#
+# The checked-in manifest is the Flathub-style pinned one. CI generates a
+# temporary copy whose git source points at the checkout instead, so the
+# bundle always matches the commit being built.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      build_aarch64:
+        description: Also build the aarch64 Flatpak
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  prepare:
+    name: prepare
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      # A manual run uses the input (default on). Tag builds use the
+      # FLATPAK_AARCH64 repository variable; unset means build both.
+      - name: Choose architectures
+        id: matrix
+        env:
+          INPUT_AARCH64: ${{ inputs.build_aarch64 }}
+          VAR_AARCH64: ${{ vars.FLATPAK_AARCH64 }}
+        run: |
+          aarch64=true
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            aarch64="${INPUT_AARCH64:-true}"
+          elif [ -n "$VAR_AARCH64" ]; then
+            aarch64="$VAR_AARCH64"
+          fi
+          case "${aarch64,,}" in
+            false|0|no|off) aarch64=false ;;
+            *) aarch64=true ;;
+          esac
+          if [ "$aarch64" = true ]; then
+            matrix='[{"arch":"x86_64","runner":"ubuntu-latest"},{"arch":"aarch64","runner":"ubuntu-24.04-arm"}]'
+          else
+            matrix='[{"arch":"x86_64","runner":"ubuntu-latest"}]'
+          fi
+          echo "aarch64=$aarch64" >> "$GITHUB_OUTPUT"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: flatpak (${{ matrix.arch }})
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-25.08
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v7
+
+      # The pinned manifest builds the v0.6.0 tag. Swap that git source for
+      # the checkout so this build covers the commit that triggered it.
+      - name: Generate a local-source manifest
+        run: python3 packaging/flatpak/make-local-manifest.py
+
+      - name: Build the Flatpak
+        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          manifest-path: packaging/flatpak/io.github.troyedwardsjr.z2rs.local.json
+          bundle: z2rs-${{ matrix.arch }}.flatpak
+          arch: ${{ matrix.arch }}
+          cache-key: flatpak-${{ matrix.arch }}-${{ hashFiles('Cargo.lock', 'packaging/flatpak/cargo-sources.json') }}
+          upload-artifact: false
+          build-bundle: true
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: flatpak-${{ matrix.arch }}
+          path: z2rs-${{ matrix.arch }}.flatpak
+          if-no-files-found: error
+
+  publish:
+    name: publish
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: flatpak-*
+          path: dist
+          merge-multiple: true
+
+      # release.yml creates the release after the desktop and Android builds,
+      # which can take a while. Wait for it instead of racing it.
+      - name: Wait for the release
+        run: |
+          for _ in $(seq 1 120); do
+            if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 60
+          done
+          echo "The release was not created within two hours." >&2
+          exit 1
+
+      - name: Upload the Flatpaks
+        run: gh release upload "$GITHUB_REF_NAME" dist/*.flatpak --clobber

@@ -11,9 +11,9 @@ use egui::{Color32, RichText};
 
 use crate::game::{self, GameExit, RunningGame};
 use crate::settings::{
-    build_args, format_command, pack_folder_warning, scan_packs, validate, Multiplayer, NetMode,
-    PackEntry, Settings, Widescreen, DEFAULT_SIGNAL_URL, GAME_CONFIG_FILE_NAME, MAX_HD_SCALE,
-    MAX_SCALE,
+    build_args, cached_rom_path, format_command, pack_folder_warning, scan_packs, validate,
+    Multiplayer, NetMode, PackEntry, Settings, Widescreen, DEFAULT_SIGNAL_URL,
+    GAME_CONFIG_FILE_NAME, MAX_HD_SCALE, MAX_SCALE,
 };
 
 /// Something the view wants the caller to do.
@@ -175,6 +175,23 @@ impl LauncherState {
     pub fn play(&mut self) -> Result<(), String> {
         self.error = None;
         self.last_exit = None;
+        // Refresh the cache while the picked file is still readable. Portal
+        // picks live under /run/user/... and stop working after a restart.
+        let rom = self.settings.rom_path.trim().to_string();
+        if !rom.is_empty() {
+            let source = PathBuf::from(&rom);
+            if source.is_file() {
+                if let Err(e) = self.settings.cache_rom(&source, &self.data_dir) {
+                    if e.kind() != std::io::ErrorKind::InvalidData {
+                        self.error = Some(format!(
+                            "Could not copy the ROM into {}: {e}. Playing from the original \
+                             file.",
+                            cached_rom_path(&self.data_dir).display()
+                        ));
+                    }
+                }
+            }
+        }
         let problems = validate(&self.settings);
         if !problems.is_empty() {
             return Err(problems.join("\n"));
@@ -456,8 +473,16 @@ fn rom_section(ui: &mut egui::Ui, state: &mut LauncherState, action: &mut Option
         hint(
             ui,
             "Use your own copy of Zelda II: The Adventure of Link (USA) as a .nes file. \
-             The launcher only remembers where it is. The file is never copied or uploaded.",
+             The launcher keeps a copy in its data folder so you only have to pick it once. \
+             It is never uploaded.",
         );
+        let rom = state.settings.rom_path.trim();
+        if !rom.is_empty() && !Path::new(rom).is_file() && state.settings.has_cached_rom() {
+            hint(
+                ui,
+                "The original file is not available right now, so the cached copy will be used.",
+            );
+        }
     });
 }
 

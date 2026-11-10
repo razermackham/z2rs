@@ -1,0 +1,76 @@
+{
+    "app-id": "io.github.troyedwardsjr.z2rs",
+    "cleanup": [
+        "/include",
+        "/lib/pkgconfig",
+        "/share/doc",
+        "/share/man",
+        "*.a",
+        "*.la"
+    ],
+    "command": "z2-launcher",
+    "finish-args": [
+        "--share=ipc",
+        "--share=network",
+        "--socket=fallback-x11",
+        "--socket=wayland",
+        "--socket=pulseaudio",
+        "--device=dri",
+        "--device=input",
+        "--filesystem=xdg-run/discord-ipc-0"
+    ],
+    "modules": [
+        {
+            "build-commands": [
+                "install -Dm0644 cargo/config .cargo/config.toml",
+                "cargo --offline fetch --manifest-path Cargo.toml",
+                "cargo --offline build --release --bin z2-native --bin z2-launcher --bin z2-signal",
+                "install -Dm0755 target/release/z2-native /app/bin/z2rs",
+                "install -Dm0755 target/release/z2-launcher /app/bin/z2-launcher",
+                "install -Dm0755 target/release/z2-signal /app/bin/z2-signal",
+                "install -Dm0644 io.github.troyedwardsjr.z2rs.desktop /app/share/applications/io.github.troyedwardsjr.z2rs.desktop",
+                "install -Dm0644 io.github.troyedwardsjr.z2rs.metainfo.xml /app/share/metainfo/io.github.troyedwardsjr.z2rs.metainfo.xml",
+                "install -Dm0644 io.github.troyedwardsjr.z2rs.svg /app/share/icons/hicolor/scalable/apps/io.github.troyedwardsjr.z2rs.svg"
+            ],
+            "build-options": {
+                "append-path": "/usr/lib/sdk/rust-stable/bin",
+                "build-args": [
+                    "--share=network"
+                ],
+                "env": {
+                    "CARGO_HOME": "/run/build/z2rs/cargo",
+                    "CARGO_NET_OFFLINE": "true"
+                }
+            },
+            "buildsystem": "simple",
+            "name": "z2rs",
+            "sources": [
+                {
+                    "commit": "4c5e34418017cfda71ea0ca09c952ff93ba1591c",
+                    "tag": "v0.6.0",
+                    "type": "git",
+                    "url": "https://github.com/troyedwardsjr/z2rs.git"
+                },
+                "cargo-sources.json",
+                {
+                    "path": "io.github.troyedwardsjr.z2rs.desktop",
+                    "type": "file"
+                },
+                {
+                    "path": "io.github.troyedwardsjr.z2rs.metainfo.xml",
+                    "type": "file"
+                },
+                {
+                    "path": "io.github.troyedwardsjr.z2rs.svg",
+                    "type": "file"
+                }
+            ]
+        }
+    ],
+    "runtime": "org.freedesktop.Platform",
+    "runtime-version": "25.08",
+    "sdk": "org.freedesktop.Sdk",
+    "sdk-extensions": [
+        "org.freedesktop.Sdk.Extension.rust-stable"
+    ]
+}

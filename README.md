@@ -31,7 +31,7 @@ While Discord is running, the desktop build shows where you are in the game (are
 
 For Android 8.0 and newer, the releases page also has `z2rs-<version>-android.apk`. Install it, pick your ROM in the app and press Play. It has an on-screen gamepad, works with Bluetooth and USB controllers, and can import an HD pack. Online co-op, the randomizer and the enhancements are not available on Android yet. [guide/android.md](guide/android.md) covers installing, the controls and the settings.
 
-Only one dump passes the check, identified by the hash of the ROM body with the 16-byte iNES header stripped: CRC32 `BA322865`, SHA1 `11333adb723a5975e0ecca3aee8f4747aa8d2d26` (No-Intro USA). The file is only ever read in place.
+Only one dump passes the check, identified by the hash of the ROM body with the 16-byte iNES header stripped: CRC32 `BA322865`, SHA1 `11333adb723a5975e0ecca3aee8f4747aa8d2d26` (No-Intro USA). The desktop launcher keeps a copy of the ROM in its data directory so you only have to pick it once; the copy is never uploaded.
 
 Nothing in the archive is code signed. On macOS, right-click `z2rs.app` and choose Open the first time, or use Open Anyway in System Settings > Privacy & Security on newer versions. Windows SmartScreen wants More info and Run anyway, and on Linux the files may need `chmod +x`.
 

@@ -14,7 +14,7 @@ The Enhancements tab holds optional gameplay and display changes ([enhancements.
 
 For online co-op the launcher fills in the public signalling server, `wss://signal.z2rs.com`, so both players only need the same room name. You can point it at your own `z2-signal` instead. See [co-op.md](co-op.md).
 
-The game remembers the last ROM it loaded, whether it came from the launcher, `--rom` or a file dropped onto the window. It stores the path as `rom_path` in the config file, so starting `z2rs` with no arguments (a double-click in a file manager, for example) boots straight into the game. The ROM stays where it is. Only its path is saved.
+The game remembers the last ROM it loaded, whether it came from the launcher, `--rom` or a file dropped onto the window. It stores the path as `rom_path` in the config file, so starting `z2rs` with no arguments (a double-click in a file manager, for example) boots straight into the game. The launcher also keeps a copy of the ROM in its data directory (`rom/game.nes`), so you only have to pick the original file once. That matters in the Flatpak build, where a file chosen through the desktop portal is not available again after a restart.
 
 ## Window size and fullscreen
 
@@ -116,7 +116,7 @@ The same settings live in `<data-dir>/z2-native.json`: `rom_path` (the remembere
 
 When the Discord app is running on the same machine, the game shows your area, attack, magic and life levels and lives on your profile. Set `discord_presence` to `false` to keep the game off your profile. `--no-discord` turns it off for one run.
 
-The data directory is `$XDG_DATA_HOME/z2rs` when `XDG_DATA_HOME` is set. Otherwise it is `~/Library/Application Support/z2rs` on macOS, `%APPDATA%/z2rs` on Windows and `~/.local/share/z2rs` elsewhere. Save states, battery saves and the config file live there. The ROM is never stored there.
+The data directory is `$XDG_DATA_HOME/z2rs` when `XDG_DATA_HOME` is set. Otherwise it is `~/Library/Application Support/z2rs` on macOS, `%APPDATA%/z2rs` on Windows and `~/.local/share/z2rs` elsewhere. Save states, battery saves and the config file live there, along with the launcher's copy of your ROM in `rom/game.nes`. In the Flatpak the data directory is `~/.var/app/io.github.troyedwardsjr.z2rs/data/z2rs`.
 
 ## Gamepads
 

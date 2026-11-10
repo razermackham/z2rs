@@ -6,7 +6,7 @@ use std::path::Path;
 use egui::{FontId, TextStyle};
 
 use crate::game;
-use crate::settings::{data_dir, find_pack_root, Settings};
+use crate::settings::{cached_rom_path, data_dir, find_pack_root, Settings};
 use crate::ui::{launcher_ui, Action, LauncherState};
 
 /// Window title.
@@ -48,7 +48,24 @@ impl LauncherApp {
                     dlg = dlg.set_directory(dir);
                 }
                 if let Some(p) = dlg.pick_file() {
+                    let data_dir = self.state.data_dir.clone();
                     s.rom_path = p.to_string_lossy().into_owned();
+                    match s.cache_rom(&p, &data_dir) {
+                        Ok(_) => self.state.error = None,
+                        Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {
+                            self.state.error = Some(format!(
+                                "That file does not look like a NES ROM (.nes): {}",
+                                p.display()
+                            ));
+                        }
+                        Err(e) => {
+                            self.state.error = Some(format!(
+                                "Could not copy the ROM into {}: {e}. You can still play from \
+                                 the original file while it is available.",
+                                cached_rom_path(&data_dir).display()
+                            ));
+                        }
+                    }
                 }
             }
             Action::BrowseHdPack => {

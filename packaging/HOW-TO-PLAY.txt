@@ -70,7 +70,8 @@ Settings, save states and battery saves live in:
     Windows  %APPDATA%\z2rs
     Linux    ~/.local/share/z2rs  (or $XDG_DATA_HOME/z2rs)
 
-The ROM itself is never copied there.
+The launcher keeps a copy of your ROM in rom/game.nes there, so you only have
+to pick the original file once. The copy is never uploaded.
 
 
 Unsigned builds

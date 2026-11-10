@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=z2rs
+GenericName=Zelda II reconstruction
+Comment=Clean-room reconstruction of Zelda II: The Adventure of Link, with widescreen, HD packs and co-op
+Exec=z2-launcher
+Icon=io.github.troyedwardsjr.z2rs
+Terminal=false
+Categories=Game;
+Keywords=zelda;nes;retro;platformer;randomizer;co-op;

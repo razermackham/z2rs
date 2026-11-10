@@ -1019,8 +1019,8 @@ fn register_native_traps(game: &mut Game) {
 /// Build an emulator from a ROM file (headered or bare).
 ///
 /// Reads the file, strips a leading iNES header when present, verifies via
-/// the hash gate, then delegates to [`emu_from_rom_body`]. The file is only
-/// read — never copied into the data dir.
+/// the hash gate, then delegates to [`emu_from_rom_body`]. This function only
+/// reads the file; the launcher may keep its own copy in the data dir.
 pub fn emu_from_rom_file(path: &Path, audio_rate: u32) -> Result<Emu, String> {
     emu_from_rom_file_with(path, audio_rate, Features::default()).map(|(emu, _body)| emu)
 }
@@ -1213,16 +1213,16 @@ pub fn no_rom_message(stale_config_rom: Option<&str>) -> String {
          \x20 - drop your Zelda II (USA) .nes file onto the game window,\n\
          \x20 - start z2rs from the z2rs launcher and pick the file there, or\n\
          \x20 - run z2-native --rom PATH/TO/zelda2.nes (or set ${}).\n\
-         z2rs remembers the file for next time. The ROM itself is never copied — \
-         only assets.bin is extracted into the data dir.",
+         z2rs remembers the file for next time. The launcher keeps its own copy of \
+         the ROM in the data dir; only assets.bin is extracted by the game itself.",
         z2_assets::rom::ROM_ENV_VAR
     )
 }
 
 /// Record `rom` (made absolute) as the config's `rom_path`, so the next plain
 /// launch boots straight into the game. Returns whether the value changed —
-/// the caller saves the config only then. Only the path is stored; the ROM
-/// itself is never copied anywhere.
+/// the caller saves the config only then. This function stores only the path;
+/// the launcher handles any cached copy.
 pub fn remember_rom_path(config: &mut NativeConfig, rom: &Path) -> bool {
     let abs = std::path::absolute(rom).unwrap_or_else(|_| rom.to_path_buf());
     let abs = abs.to_string_lossy().into_owned();
@@ -1254,8 +1254,8 @@ pub fn env_path_if_usable(var: &str) -> Option<PathBuf> {
 /// Ensure `<data-dir>/assets.bin` exists and decodes.
 ///
 /// When missing, extract from the ROM resolved by [`resolve_rom_path`] via
-/// `z2-assets` (`extract_rom_file_to_vec`) and write the image. The ROM
-/// itself is never stored. Returns the assets path.
+/// `z2-assets` (`extract_rom_file_to_vec`) and write the image. This function
+/// stores only the extracted assets, not the ROM. Returns the assets path.
 pub fn ensure_assets(
     cli_rom: Option<&str>,
     config: &NativeConfig,
@@ -2298,7 +2298,7 @@ usage: z2-native [--rom PATH] [--movie M.fm2|.bk2] [--config PATH]
                  [--seed TEXT] [--rando-flags STRING] [--rando-spoiler PATH]
                  [--sprite-ips PATH] [--no-traps] [--no-discord]
                  [--enh-json JSON|@PATH] [--display-enh-json JSON|@PATH] [--headless ...]
-  --rom PATH       Zelda II .nes ROM (else config rom_path / $Z2_ROM). Never stored.
+  --rom PATH       Zelda II .nes ROM (else config rom_path / $Z2_ROM). The launcher caches its own copy.
   --movie PATH     .fm2/.bk2 demo playback (oracle-free: steps Game, no verify).
   --config PATH    JSON config override (default: <data-dir>/z2-native.json).
   --widescreen P   widescreen margins: off | 16:10 (8 tiles/side) | 16:9 (11) | 21:9 (19) | N (0-20).

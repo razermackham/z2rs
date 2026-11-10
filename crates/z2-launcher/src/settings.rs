@@ -13,6 +13,10 @@ pub use z2_core::enh::{DisplayEnh, Enhancements};
 pub const APP_DIR_NAME: &str = "z2rs";
 /// Launcher settings file name inside the data dir.
 pub const SETTINGS_FILE_NAME: &str = "launcher.json";
+/// Folder inside the data dir that holds the launcher's copy of the ROM.
+pub const ROM_CACHE_DIR_NAME: &str = "rom";
+/// File name of the launcher's copy of the ROM.
+pub const ROM_CACHE_FILE_NAME: &str = "game.nes";
 /// The game's own config file name inside the data dir.
 pub const GAME_CONFIG_FILE_NAME: &str = "z2-native.json";
 /// Public signalling server used for online co-op.
@@ -70,6 +74,16 @@ pub fn data_dir() -> PathBuf {
         }
     }
     PathBuf::from(".z2rs-data")
+}
+
+/// Folder inside `data_dir` that holds the launcher's copy of the ROM.
+pub fn rom_cache_dir(data_dir: &Path) -> PathBuf {
+    data_dir.join(ROM_CACHE_DIR_NAME)
+}
+
+/// Where the launcher keeps its copy of the selected ROM.
+pub fn cached_rom_path(data_dir: &Path) -> PathBuf {
+    rom_cache_dir(data_dir).join(ROM_CACHE_FILE_NAME)
 }
 
 /// Widescreen margins.
@@ -196,8 +210,16 @@ impl Default for RandoSettings {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
-    /// The player's own Zelda II (USA) ROM file. Only its path is stored.
+    /// The player's own Zelda II (USA) ROM file. The launcher copies it into
+    /// the data dir (see [`Settings::rom_cache_path`]) so the original is only
+    /// needed once, which also makes portal-picked files work after a restart.
     pub rom_path: String,
+    /// Path of the launcher's cached copy of [`Settings::rom_path`]; empty when
+    /// nothing has been cached yet.
+    pub rom_cache_path: String,
+    /// The path [`Settings::rom_cache_path`] was copied from; empty when
+    /// nothing has been cached yet.
+    pub rom_cache_source: String,
     /// Initial window size multiplier (1-6).
     pub scale: u32,
     /// Start in borderless fullscreen.
@@ -247,6 +269,8 @@ impl Default for Settings {
     fn default() -> Self {
         Settings {
             rom_path: String::new(),
+            rom_cache_path: String::new(),
+            rom_cache_source: String::new(),
             scale: 3,
             fullscreen: false,
             integer_scale: false,
@@ -293,6 +317,77 @@ impl Settings {
         let json = serde_json::to_string_pretty(self).map_err(std::io::Error::other)?;
         std::fs::write(path, json)
     }
+
+    /// The cached ROM path, if one has been recorded.
+    pub fn cached_rom_path(&self) -> Option<PathBuf> {
+        let path = self.rom_cache_path.trim();
+        (!path.is_empty()).then(|| PathBuf::from(path))
+    }
+
+    /// `true` when the recorded cached copy still exists.
+    pub fn has_cached_rom(&self) -> bool {
+        self.cached_rom_path().is_some_and(|p| p.is_file())
+    }
+
+    /// Copy `source` into the data dir and remember it as the cached ROM.
+    ///
+    /// The copy is written beside the final file and renamed into place, so a
+    /// failed copy never leaves a half-written ROM behind.
+    pub fn cache_rom(&mut self, source: &Path, data_dir: &Path) -> std::io::Result<PathBuf> {
+        if !file_starts_with_ines(source)? {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "the file does not look like a NES ROM",
+            ));
+        }
+        let dir = rom_cache_dir(data_dir);
+        std::fs::create_dir_all(&dir)?;
+        let dest = cached_rom_path(data_dir);
+        let tmp = dir.join(format!("{ROM_CACHE_FILE_NAME}.part"));
+        std::fs::copy(source, &tmp)?;
+        if dest.exists() {
+            std::fs::remove_file(&dest)?;
+        }
+        if let Err(e) = std::fs::rename(&tmp, &dest) {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(e);
+        }
+        self.rom_cache_source = source.to_string_lossy().into_owned();
+        self.rom_cache_path = dest.to_string_lossy().into_owned();
+        Ok(dest)
+    }
+
+    /// The ROM to check before playing: the player's file while it is readable,
+    /// otherwise the cached copy. This lets a stale or corrupt cache stay out
+    /// of the way when the original is still available.
+    pub fn rom_to_check(&self) -> PathBuf {
+        let rom = PathBuf::from(self.rom_path.trim());
+        if rom.is_file() {
+            return rom;
+        }
+        if let Some(cache) = self.cached_rom_path() {
+            if cache.is_file() {
+                return cache;
+            }
+        }
+        rom
+    }
+
+    /// The ROM to pass to the game: the cached copy when it belongs to the
+    /// selected file and looks like a NES ROM, otherwise the player's file.
+    ///
+    /// Passing the cache keeps the path the game remembers stable even when
+    /// the original came from a portal grant that disappears after a restart.
+    pub fn rom_for_launch(&self) -> PathBuf {
+        let rom = PathBuf::from(self.rom_path.trim());
+        if let Some(cache) = self.cached_rom_path() {
+            let usable = file_starts_with_ines(&cache).unwrap_or(false);
+            if usable && (self.rom_cache_source.trim() == self.rom_path.trim() || !rom.is_file()) {
+                return cache;
+            }
+        }
+        rom
+    }
 }
 
 /// Game command-line arguments (without the program name) for `s`.
@@ -307,9 +402,9 @@ pub fn build_args(s: &Settings) -> Vec<String> {
             a.push(v);
         }
     };
-    let rom = s.rom_path.trim();
-    if !rom.is_empty() {
-        push("--rom", Some(rom.to_string()));
+    let rom = s.rom_for_launch();
+    if !rom.as_os_str().is_empty() {
+        push("--rom", Some(rom.to_string_lossy().into_owned()));
     }
     push("--scale", Some(s.scale.to_string()));
     if s.fullscreen {
@@ -491,17 +586,23 @@ pub fn validate(s: &Settings) -> Vec<String> {
     if rom.is_empty() {
         out.push("Choose your Zelda II ROM file (a .nes file) to play.".to_string());
     } else {
-        let p = Path::new(rom);
+        let p = s.rom_to_check();
         if !p.is_file() {
-            out.push(format!("The ROM file was not found: {rom}"));
+            out.push(format!(
+                "The ROM file was not found: {rom}. Pick it again to make a new copy."
+            ));
         } else {
-            match file_starts_with_ines(p) {
+            match file_starts_with_ines(&p) {
                 Ok(true) => {}
                 Ok(false) => out.push(format!(
                     "That file does not look like a NES ROM (.nes). Pick your Zelda II (USA) \
-                     .nes file: {rom}"
+                     .nes file: {}",
+                    p.display()
                 )),
-                Err(e) => out.push(format!("The ROM file could not be read ({e}): {rom}")),
+                Err(e) => out.push(format!(
+                    "The ROM file could not be read ({e}): {}",
+                    p.display()
+                )),
             }
         }
     }
@@ -879,6 +980,60 @@ mod tests {
     }
 
     #[test]
+    fn rom_cache_is_used_when_the_original_is_gone() {
+        let d = temp_dir("rom-cache");
+        let src = fake_rom(&d);
+        let data = d.join("data");
+        let mut s = Settings {
+            rom_path: src.to_string_lossy().into_owned(),
+            ..Settings::default()
+        };
+
+        let cache = s.cache_rom(&src, &data).unwrap();
+        assert_eq!(cache, cached_rom_path(&data));
+        assert_eq!(s.rom_cache_source, s.rom_path);
+        assert_eq!(s.rom_cache_path.as_str(), cache.to_string_lossy().as_ref());
+        assert!(s.has_cached_rom());
+        assert!(validate(&s).is_empty(), "{:?}", validate(&s));
+        assert_eq!(s.rom_to_check(), src);
+        assert_eq!(s.rom_for_launch(), cache);
+        assert!(build_args(&s)
+            .windows(2)
+            .any(|w| w[0] == "--rom" && w[1] == cache.to_string_lossy().as_ref()));
+
+        // The portal grant is gone after a restart: the cache takes over.
+        std::fs::remove_file(&src).unwrap();
+        assert!(validate(&s).is_empty(), "{:?}", validate(&s));
+        assert_eq!(s.rom_to_check(), cache);
+        assert_eq!(s.rom_for_launch(), cache);
+
+        // A corrupt cache does not hide a readable original.
+        std::fs::write(&cache, b"not a rom").unwrap();
+        std::fs::write(&src, b"NES\x1a\x08\x10\x12\0\0\0\0\0\0\0\0\0").unwrap();
+        assert_eq!(s.rom_to_check(), src);
+        assert_eq!(s.rom_for_launch(), src);
+
+        // With neither file left the original path is what gets reported.
+        std::fs::remove_file(&src).unwrap();
+        std::fs::remove_file(&cache).unwrap();
+        assert!(validate(&s)[0].contains("not found"));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn cache_rom_refuses_a_file_that_is_not_a_nes_rom() {
+        let d = temp_dir("rom-cache-bad");
+        let bad = d.join("notes.txt");
+        std::fs::write(&bad, b"not a rom").unwrap();
+        let mut s = Settings::default();
+        let e = s.cache_rom(&bad, &d.join("data")).unwrap_err();
+        assert_eq!(e.kind(), std::io::ErrorKind::InvalidData);
+        assert!(s.rom_cache_path.is_empty());
+        assert!(s.rom_cache_source.is_empty());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
     fn pack_root_is_found_one_level_down() {
         let d = temp_dir("pack-root");
         let outer = d.join("packs").join("mypack");
@@ -1014,6 +1169,8 @@ mod tests {
         let loaded = Settings::load(&p);
         assert_eq!(loaded.rom_path, "/y.nes");
         assert_eq!(loaded.signal_url, DEFAULT_SIGNAL_URL);
+        assert!(loaded.rom_cache_path.is_empty());
+        assert!(loaded.rom_cache_source.is_empty());
         let _ = std::fs::remove_dir_all(&d);
     }
 
