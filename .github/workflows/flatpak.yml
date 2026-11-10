@@ -72,16 +72,22 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # The pinned manifest builds the v0.6.0 tag. Swap that git source for
-      # the checkout so this build covers the commit that triggered it.
+      # The pinned manifest builds the upstream tag. Swap that git source for
+      # the checkout, and rewrite the app ID/metadata for this repository, so
+      # a fork builds io.github.<owner>.<repo> instead of the upstream ID.
       - name: Generate a local-source manifest
+        env:
+          FLATPAK_OWNER: ${{ github.repository_owner }}
+          FLATPAK_REPO: ${{ github.event.repository.name }}
+          FLATPAK_REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+          FLATPAK_REF: ${{ github.ref_name }}
         run: python3 packaging/flatpak/make-local-manifest.py
 
       - name: Build the Flatpak
         uses: flatpak/flatpak-github-actions/flatpak-builder@v6
         with:
           manifest-path: packaging/flatpak/io.github.troyedwardsjr.z2rs.local.json
-          bundle: z2rs-${{ matrix.arch }}.flatpak
+          bundle: ${{ github.event.repository.name }}-${{ matrix.arch }}.flatpak
           arch: ${{ matrix.arch }}
           cache-key: flatpak-${{ matrix.arch }}-${{ hashFiles('Cargo.lock', 'packaging/flatpak/cargo-sources.json') }}
           upload-artifact: false
@@ -90,7 +96,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: flatpak-${{ matrix.arch }}
-          path: z2rs-${{ matrix.arch }}.flatpak
+          path: ${{ github.event.repository.name }}-${{ matrix.arch }}.flatpak
           if-no-files-found: error
 
   publish:

@@ -6,6 +6,7 @@
 /build-dir/
 /z2rs-*.flatpak
 /packaging/flatpak/*.local.json
+/packaging/flatpak/generated/
 
 # Local ROM copies are NEVER committed. Supply the ROM via the Z2_ROM
 # environment variable pointing at your own dump. See LEGAL.md.
@@ -44,6 +45,9 @@ assets.bin
 *~
 .idea/
 .vscode/
+
+# Python bytecode from local helper scripts.
+__pycache__/
 
 # HD-pack output (LEGAL.md §1): template sheets are rendered from the ROM's
 # CHR data, and packs live outside the repository. Tooling refuses to write

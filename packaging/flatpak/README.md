@@ -12,7 +12,7 @@ does **not** contain a ROM. Players supply their own Zelda II (USA) dump.
 | File | Purpose |
 | --- | --- |
 | `io.github.troyedwardsjr.z2rs.json` | Pinned, Flathub-style manifest. Builds the `v0.6.0` tag. |
-| `make-local-manifest.py` | Writes the gitignored `*.local.json` that builds the current checkout. |
+| `make-local-manifest.py` | Writes the gitignored `*.local.json` and fork-specific metadata for the current checkout. |
 | `cargo-sources.json` | Vendored crate sources for `cargo --offline`. Generated from `Cargo.lock`. |
 | `io.github.troyedwardsjr.z2rs.desktop` | Desktop entry. |
 | `io.github.troyedwardsjr.z2rs.metainfo.xml` | AppStream metadata. |
@@ -22,6 +22,34 @@ The checked-in manifest deliberately pins a released tag so it can be built
 outside CI. The workflow generates a temporary `*.local.json` next to it whose
 `git` source is replaced by the checkout being built. Generated local manifests
 are gitignored and must not be committed.
+
+## Forks
+
+The generated manifest adapts to the repository it is built from, so a fork does
+not ship the upstream identity:
+
+| Metadata | Upstream | A fork |
+| --- | --- | --- |
+| App ID | `io.github.troyedwardsjr.z2rs` | `io.github.<owner>.<repo>` |
+| Desktop file | `<app-id>.desktop` | Same rule |
+| Metainfo / icon | Named after the app ID | Same rule |
+| Display name | `z2rs` | Repository name |
+| Developer | `troyedwardsjr` | Fork owner |
+| Homepage, bug tracker, help | Upstream URLs | Fork URLs |
+
+The app-ID components are lowercased, and characters Flatpak does not allow
+(including dashes in the owner) become underscores. The pinned manifest itself
+stays upstream; only the generated `*.local.json` and its generated metadata are
+rewritten. The generated desktop, metainfo and icon files are written to
+`packaging/flatpak/generated/`, which is gitignored.
+
+GitHub Actions passes the repository owner, name, URL and ref automatically. For
+a local build the script reads `origin`, so a fork normally works with no
+configuration. Override it with `FLATPAK_OWNER`, `FLATPAK_REPO`,
+`FLATPAK_REPO_URL` and `FLATPAK_REF` when needed.
+
+The bundle file is named after the repository, for example
+`z2rs-x86_64.flatpak` upstream or `my-z2rs-x86_64.flatpak` in a renamed fork.
 
 ## Building locally
 
@@ -138,6 +166,7 @@ When the version changes:
        -o packaging/flatpak/cargo-sources.json
    ```
 
-   The generator needs `aiohttp`, `PyYAML` and `tomlkit` (for example
+   The generator is the upstream `flatpak-builder-tools` script, vendored under
+   `.cargo/`. It needs `aiohttp`, `PyYAML` and `tomlkit` (for example
    `python3 -m pip install aiohttp pyyaml tomlkit`).
 4. Rebuild locally or run the workflow manually before tagging.
