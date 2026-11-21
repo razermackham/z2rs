@@ -504,7 +504,7 @@ impl std::fmt::Debug for Emu {
 ///
 /// Purely visual settings (margin width, output scale, HD pack) live in
 /// [`DisplaySettings`] instead: they never touch the game.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Features {
     /// Two-Link co-op (pad 2 drives a second Link in sideview).
     pub coop: bool,
@@ -522,6 +522,10 @@ pub struct Features {
     /// display-only observer: the game itself runs byte-identically, and the
     /// observer stays out of [`trapset_id`], so netplay peers may differ.
     pub margin_sprites: bool,
+    /// Remove the NES 8-sprites-per-scanline limit so crowded scanlines do not
+    /// drop sprites ("sprite flicker"). Zelda II does not read the
+    /// sprite-overflow status bit, so this is display-only.
+    pub reduce_sprite_flicker: bool,
     /// Randomize the verified vanilla body with this spec before building
     /// (`--seed` / `--rando-flags`). Shared by every rebuild path (ROM drop,
     /// netplay restart), so the same seed is regenerated each time.
@@ -533,6 +537,21 @@ pub struct Features {
     /// [`Game::set_enhancements`]). Changes gameplay, so it is part of the
     /// netplay identity ([`session_trapset_id`]) and forced off for movies.
     pub enhancements: Enhancements,
+}
+
+impl Default for Features {
+    fn default() -> Self {
+        Self {
+            coop: false,
+            wide_gameplay: None,
+            record: false,
+            margin_sprites: false,
+            reduce_sprite_flicker: true,
+            rando: None,
+            no_traps: false,
+            enhancements: Enhancements::default(),
+        }
+    }
 }
 
 /// Arm or disarm the PPU render record on an existing emulator.
@@ -576,6 +595,16 @@ pub fn apply_features(emu: &mut Emu, feats: Features) {
     }
     arm_record(emu, feats.record);
     emu.game.set_margin_sprites(feats.margin_sprites);
+    if emu.game.coop_status().is_none() {
+        emu.game
+            .ppu
+            .model_mut()
+            .set_sprite_limit(if feats.reduce_sprite_flicker {
+                z2_ppu::SpriteLimit::Unlimited
+            } else {
+                z2_ppu::SpriteLimit::Faithful8
+            });
+    }
 }
 
 /// Identity of the registered trap set: FNV-1a over every `(addr, name)`
@@ -850,6 +879,14 @@ pub fn new_emu(audio_rate: u32) -> Emu {
 pub fn new_emu_with(audio_rate: u32, feats: Features) -> Emu {
     let mut emu = new_emu(audio_rate);
     arm_record(&mut emu, feats.record);
+    emu.game
+        .ppu
+        .model_mut()
+        .set_sprite_limit(if feats.reduce_sprite_flicker {
+            z2_ppu::SpriteLimit::Unlimited
+        } else {
+            z2_ppu::SpriteLimit::Faithful8
+        });
     emu
 }
 
@@ -995,6 +1032,18 @@ pub fn emu_from_trusted_body_with(
     };
     arm_record(&mut emu, feats.record);
     emu.game.set_margin_sprites(feats.margin_sprites);
+    // Co-op manages its own sprite limit while active (and restores it on
+    // disable), so only apply the non-co-op preference when co-op is off.
+    if emu.game.coop_status().is_none() {
+        emu.game
+            .ppu
+            .model_mut()
+            .set_sprite_limit(if feats.reduce_sprite_flicker {
+                z2_ppu::SpriteLimit::Unlimited
+            } else {
+                z2_ppu::SpriteLimit::Faithful8
+            });
+    }
     Ok(emu)
 }
 
@@ -1755,7 +1804,7 @@ pub fn coop_suffix(status: Option<&z2_core::coop::CoopStatus>) -> String {
 
 /// Purely visual settings. None of these reach the game: `Game::step` and
 /// `Game::frame_indexed` are byte-identical whatever is set here.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DisplaySettings {
     /// Widescreen margin tiles per side (0 = off, max 16).
     pub wide_tiles: u8,
@@ -1773,6 +1822,9 @@ pub struct DisplaySettings {
     /// the margins, and the in-window part of those just left of it
     /// (widescreen only; [`Features::margin_sprites`]).
     pub margin_sprites: bool,
+    /// Remove the NES 8-sprites-per-scanline limit so crowded scanlines do
+    /// not drop sprites ("sprite flicker"). Display-only.
+    pub reduce_sprite_flicker: bool,
     /// HD graphics pack directory (the one holding `pack.json`).
     pub pack_dir: Option<PathBuf>,
     /// Write a recorded template pack here when the app exits.
@@ -1786,6 +1838,23 @@ pub struct DisplaySettings {
     /// ([`crate::camera_zoom`]), unzoomed rows at `height / 240` pixels per
     /// NES line. `None` keeps the composed size.
     pub output_size: Option<(u32, u32)>,
+}
+
+impl Default for DisplaySettings {
+    fn default() -> Self {
+        Self {
+            wide_tiles: 0,
+            scale: 0,
+            fill_left_clip: false,
+            fill_right_clip: false,
+            margin_sprites: false,
+            reduce_sprite_flicker: true,
+            pack_dir: None,
+            record_dir: None,
+            display_enh: DisplayEnh::default(),
+            output_size: None,
+        }
+    }
 }
 
 impl DisplaySettings {
@@ -1814,6 +1883,7 @@ impl DisplaySettings {
             wide_gameplay: None,
             record: self.needs_record(),
             margin_sprites: self.wide_tiles > 0 && self.margin_sprites,
+            reduce_sprite_flicker: self.reduce_sprite_flicker,
             rando: None,
             no_traps: false,
             enhancements: Enhancements::default(),
@@ -2202,6 +2272,8 @@ pub struct NativeArgs {
     pub fill_right_clip: Option<bool>,
     /// `--margin-sprites on|off` (overrides `widescreen_margin_sprites`).
     pub margin_sprites: Option<bool>,
+    /// `--reduce-sprite-flicker on|off` (overrides `reduce_sprite_flicker`).
+    pub reduce_sprite_flicker: Option<bool>,
     /// `--wide-gameplay on|off` (overrides `widescreen_gameplay`).
     pub wide_gameplay: Option<bool>,
     /// `--load-state PATH.z2snap`: loaded at startup exactly as `F7` does,
@@ -2288,7 +2360,7 @@ pub const NATIVE_USAGE: &str = "\
 usage: z2-native [--rom PATH] [--movie M.fm2|.bk2] [--config PATH]
                  [--widescreen off|16:10|16:9|21:9|N]
                  [--fill-left-clip on|off] [--fill-right-clip on|off]
-                 [--margin-sprites on|off]
+                 [--margin-sprites on|off] [--reduce-sprite-flicker on|off]
                  [--wide-gameplay on|off]
                  [--hd-pack DIR] [--hd-scale N] [--hd-record DIR]
                  [--scale N] [--fullscreen] [--scale-mode fit|integer]
@@ -2555,6 +2627,10 @@ pub fn parse_native_args(argv: &[String]) -> Result<NativeArgs, String> {
             "--margin-sprites" => {
                 out.margin_sprites = Some(native_on_off(&mut it, "--margin-sprites")?);
             }
+            "--reduce-sprite-flicker" => {
+                out.reduce_sprite_flicker =
+                    Some(native_on_off(&mut it, "--reduce-sprite-flicker")?);
+            }
             "--wide-gameplay" => {
                 out.wide_gameplay = Some(native_on_off(&mut it, "--wide-gameplay")?);
             }
@@ -2728,6 +2804,7 @@ pub fn run_windowed_with(
         wide_gameplay: resolve_wide_gameplay(args, &config, display_settings.wide_tiles),
         record: display.needs_record(),
         margin_sprites: display_settings.features(coop).margin_sprites,
+        reduce_sprite_flicker: display_settings.reduce_sprite_flicker,
         rando,
         no_traps: args.no_traps,
         enhancements: resolve_enhancements(args, &config),
@@ -2913,6 +2990,9 @@ pub fn resolve_display(
         margin_sprites: args
             .margin_sprites
             .unwrap_or(config.widescreen_margin_sprites),
+        reduce_sprite_flicker: args
+            .reduce_sprite_flicker
+            .unwrap_or(config.reduce_sprite_flicker),
         pack_dir: match &args.hd_pack {
             Some(s) => non_empty(s),
             None => config.hd_pack.as_ref().and_then(non_empty),
@@ -3012,6 +3092,7 @@ pub fn resolve_features(args: &NativeArgs, config: &NativeConfig) -> Result<Feat
     let display = resolve_display(args, config)?;
     let mut feats = display.features(resolve_coop(args, config));
     feats.wide_gameplay = resolve_wide_gameplay(args, config, display.wide_tiles);
+    feats.reduce_sprite_flicker = display.reduce_sprite_flicker;
     feats.enhancements = resolve_enhancements(args, config);
     Ok(feats)
 }
@@ -3430,6 +3511,8 @@ fn run_event_loop(
                     let rate = self.config.effective_audio_rate();
                     let feats = Features {
                         coop: coop_flags & z2_net::COOP_TWO_LINKS != 0,
+                        // Keep serialized PPU/display state identical across peers.
+                        reduce_sprite_flicker: true,
                         ..self.feats
                     };
                     let Some(body) = self.rom_body.clone() else {
@@ -4805,8 +4888,19 @@ fn run_event_loop(
                     }
                 }
             }
-            if let Some(w) = self.window.as_ref() {
-                w.request_redraw();
+            // Recompose/present only when something may have changed. Unconditionally
+            // requesting a redraw on every Poll tick recomposed and re-rendered the
+            // same frame thousands of times per second between emulated frames, which
+            // could starve the frame timer and show up as stutter (and, in the worst
+            // case, briefly dropped/missed presentations).
+            let need_redraw = self.net_active()
+                || steps > 0
+                || self.overlay.is_open()
+                || self.paused;
+            if need_redraw {
+                if let Some(w) = self.window.as_ref() {
+                    w.request_redraw();
+                }
             }
         }
     }
@@ -6215,6 +6309,7 @@ mod tests {
                 wide_gameplay: None,
                 record: true,
                 margin_sprites: true,
+            reduce_sprite_flicker: true,
                 rando: None,
                 no_traps: false,
                 enhancements: Default::default(),
@@ -6275,6 +6370,7 @@ mod tests {
                     pack_dir: None,
                     record_dir: None,
                     margin_sprites: false,
+                    reduce_sprite_flicker: true,
                     display_enh: Default::default(),
                     output_size: None,
                 })
@@ -6310,6 +6406,7 @@ mod tests {
                         pack_dir: None,
                         record_dir: None,
                         margin_sprites: false,
+                        reduce_sprite_flicker: true,
                         display_enh: Default::default(),
                         output_size: None,
                     };

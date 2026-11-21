@@ -385,6 +385,12 @@ pub struct NativeConfig {
     /// widescreen margins (display only). On by default.
     #[serde(default = "default_true")]
     pub widescreen_margin_sprites: bool,
+    /// Remove the NES 8-sprites-per-scanline limit so characters never
+    /// briefly disappear when a scanline is crowded ("sprite flicker").
+    /// Zelda II does not read the sprite-overflow status bit, so this is
+    /// display-only. On by default.
+    #[serde(default = "default_true")]
+    pub reduce_sprite_flicker: bool,
     /// Wide gameplay: with widescreen on, overworld encounter blobs, side-view
     /// enemies and townsfolk spawn and live out in the margins instead of
     /// popping in at the original screen edge. This one **changes gameplay**
@@ -526,6 +532,7 @@ impl Default for NativeConfig {
             widescreen_fill_left_clip: true,
             widescreen_fill_right_clip: true,
             widescreen_margin_sprites: true,
+            reduce_sprite_flicker: true,
             widescreen_gameplay: true,
             hd_pack: None,
             hd_scale: default_hd_scale(),

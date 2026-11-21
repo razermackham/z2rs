@@ -57,6 +57,7 @@ fn build(body: &[u8]) -> Emu {
             wide_gameplay: None,
             record: false,
             margin_sprites: false,
+            reduce_sprite_flicker: true,
             rando: None,
             no_traps: false,
             enhancements: Default::default(),

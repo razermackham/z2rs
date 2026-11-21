@@ -192,6 +192,7 @@ fn rom_session_start_fits_the_windows_main_stack() {
             wide_gameplay: None,
             record: false,
             margin_sprites: false,
+            reduce_sprite_flicker: true,
             rando: None,
             no_traps: false,
             enhancements: Default::default(),

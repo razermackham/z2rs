@@ -287,6 +287,7 @@ fn present_size_follows_the_widescreen_preset_and_scale() {
                 pack_dir: None,
                 record_dir: None,
                 margin_sprites: false,
+                reduce_sprite_flicker: true,
                 display_enh: Default::default(),
                 output_size: None,
             })
@@ -349,6 +350,7 @@ fn no_rom_start_is_consistent_under_every_feature_combination() {
                     pack_dir: None,
                     record_dir: None,
                     margin_sprites: false,
+                    reduce_sprite_flicker: true,
                     display_enh: Default::default(),
                     output_size: None,
                 };
@@ -391,6 +393,7 @@ fn no_rom_two_pad_stepping_and_present_is_safe() {
         pack_dir: None,
         record_dir: None,
         margin_sprites: false,
+        reduce_sprite_flicker: true,
         display_enh: Default::default(),
         output_size: None,
     };
@@ -419,6 +422,7 @@ fn rom_build_applies_features_and_reports_a_trapset() {
         wide_gameplay: None,
         record: true,
         margin_sprites: false,
+            reduce_sprite_flicker: true,
         rando: None,
         no_traps: false,
         enhancements: Default::default(),
@@ -472,6 +476,7 @@ fn hd_recording_round_trips_into_a_loadable_pack() {
         pack_dir: None,
         record_dir: Some(dir.clone()),
         margin_sprites: false,
+        reduce_sprite_flicker: true,
         display_enh: Default::default(),
         output_size: None,
     };
@@ -507,6 +512,7 @@ fn hd_recording_round_trips_into_a_loadable_pack() {
         pack_dir: Some(dir.clone()),
         record_dir: None,
         margin_sprites: false,
+        reduce_sprite_flicker: true,
         display_enh: Default::default(),
         output_size: None,
     };

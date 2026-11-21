@@ -160,6 +160,7 @@ impl HeadlessArgs {
             fill_left_clip: true,
             fill_right_clip: true,
             margin_sprites: self.margin_sprites(),
+            reduce_sprite_flicker: true,
             pack_dir: self.hd_pack.as_deref().map(std::path::PathBuf::from),
             record_dir: None,
             display_enh: self

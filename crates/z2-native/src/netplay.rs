@@ -630,6 +630,8 @@ pub fn session_emu_with(
 ) -> Result<Emu, String> {
     let feats = Features {
         coop: coop_flags & COOP_TWO_LINKS != 0,
+        // Display-only but part of serialized PPU/savestate; keep peers identical.
+        reduce_sprite_flicker: true,
         ..base
     };
     let mut emu = emu_from_rom_body_with(body, audio_rate, feats)?;
