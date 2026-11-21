@@ -89,7 +89,7 @@ jobs:
           manifest-path: packaging/flatpak/io.github.troyedwardsjr.z2rs.local.json
           bundle: ${{ github.event.repository.name }}-${{ matrix.arch }}.flatpak
           arch: ${{ matrix.arch }}
-          cache-key: flatpak-${{ matrix.arch }}-${{ hashFiles('Cargo.lock', 'packaging/flatpak/cargo-sources.json') }}
+          cache-key: flatpak-${{ matrix.arch }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**', 'packaging/flatpak/**') }}
           upload-artifact: false
           build-bundle: true
 
